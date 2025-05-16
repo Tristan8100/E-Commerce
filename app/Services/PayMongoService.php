@@ -16,11 +16,14 @@ class PayMongoService
     /**
      * Create a checkout session in PayMongo
      */
-    public function createCheckoutSession($username, $useremail)
+    public function createCheckoutSession($username, $useremail, $price)
     {
         //remove active session
         if (session()->has('paymongo_session_id')) {
             session()->forget('paymongo_session_id');
+        }
+        if (session()->has('order_id')) {
+            session()->forget('order_id');
         }
 
         $url = "https://api.paymongo.com/v1/checkout_sessions";
@@ -40,7 +43,7 @@ class PayMongoService
                     "line_items" => [
                         [
                             "currency" => "PHP",
-                            "amount" => 10000,
+                            "amount" => $price * 100, // Convert to cents
                             "description" => "reservation fees",
                             "name" => "service reserve",
                             "quantity" => 1

@@ -54,6 +54,23 @@ class ProductController extends Controller
         ]);
     }
 
+    public function getSingleProduct($id)
+    {
+        $product = Product::with('category')->findOrFail($id);
+
+        // Convert binary image to Base64 (if exists)
+        $product->image_url = $product->image 
+            ? 'data:image/jpeg;base64,' . base64_encode($product->image) 
+            : null;
+
+        $product->makeHidden(['image']); // Remove raw blob
+
+        return response()->json([
+            'success' => true,
+            'data' => $product
+        ]);
+    }
+
     public function addtocart(Request $request)
     {
         $request->validate([
@@ -74,7 +91,13 @@ class ProductController extends Controller
                         ->first();
 
         if ($cartItem) {
-            // If item exists, increment the quantity
+            // If item exists, check the cart quantity then compare to product, after increment the quantity
+            if(Product::find($cartItem->quantity + $request->quantity > Product::find($request->product_id)->stock)){
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product is out of stock1'
+                ], 400);
+            }
             $cartItem->increment('quantity', $request->quantity);
         } else {
             // Otherwise, add new item to cart

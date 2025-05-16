@@ -102,6 +102,68 @@ class OrderController extends Controller
         ]);
     }
 
+    public function getorder(Request $request) {
+        $statusFilter = $request->input('status'); // Get the status filter from the query parameter
+
+        $query = Order::with('orderItems.product')
+            ->where('user_id', Auth::user()->id)
+            ->orderBy('created_at', 'desc');
+
+        if ($statusFilter) {
+            $query->where('status', $statusFilter); // Apply the status filter if provided
+        }
+
+        $orders = $query->paginate(5);
+
+        foreach ($orders as $orderItem) {
+            foreach ($orderItem->orderItems as $item) {
+                $product = $item->product;
+                $product->image_url = $product->image 
+                    ? 'data:image/jpeg;base64,' . base64_encode($product->image) 
+                    : null;
+                $product->makeHidden(['image']);
+            }
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'orders' => $orders,
+        ]);
+    }
+
+    public function getorder0(Request $request)
+    {
+        $perPage = $request->input('per_page', 5); // Default to 5 items per page
+        $page = $request->input('page', 1); // Default to page 1
+        
+        $orders = Order::with('orderItems.product')
+            ->where('user_id', Auth::user()->id)
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        foreach ($orders as $orderItem) {
+            foreach ($orderItem->orderItems as $item) {
+                $product = $item->product;
+                $product->image_url = $product->image 
+                    ? 'data:image/jpeg;base64,' . base64_encode($product->image) 
+                    : null;
+                $product->makeHidden(['image']);
+            }
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'orders' => $orders->items(),
+            'pagination' => [
+                'total' => $orders->total(),
+                'per_page' => $orders->perPage(),
+                'current_page' => $orders->currentPage(),
+                'last_page' => $orders->lastPage(),
+                'from' => $orders->firstItem(),
+                'to' => $orders->lastItem()
+            ]
+        ]);
+    }
+
 
     public function submitOrder(Request $request)
     {
@@ -143,6 +205,11 @@ class OrderController extends Controller
                 'quantity' => $cartvalue->quantity,
                 'price' => $cartvalue->product->price,
             ]);
+
+            Cart::destroy($cartvalue->id); //delete cart item after order
+            $product = Product::find($cartvalue->product->id);
+            $product->stock -= $cartvalue->quantity;
+            $product->save();
         }
 
         if ($order) {
@@ -152,17 +219,19 @@ class OrderController extends Controller
 
                 $response = $this->PayMongoService->createCheckoutSession(
                     Auth::user()->name,
-                    Auth::user()->email
+                    Auth::user()->email,
+                    $request->total
                 );
 
                 if (isset($response['data']['attributes']['checkout_url'])) {
                     session()->put('paymongo_session_id', $response['data']['id']); //put on session
+                    session()->put('order_id', $order->id); //put on session
                     return response()->json(['status' => 'success',
                     'message' => 'Order placed successfully!', 
-                    'pay' => $response['data']['attributes']['checkout_url']]);
+                    'pay' => $response['data']['attributes']['checkout_url']]); //CORS issue if not handled in client
 
                 } else {
-                    return back()->with('error', 'Failed to create a checkout session.');
+                    return response()->json(['status' => 'error', 'message' => 'Failed to create a checkout session.'], 500);
                 }
             } else {
                 //manual redirect if COD
@@ -184,5 +253,48 @@ class OrderController extends Controller
             }
         }
     }
+
+    public function processpayment() {
+        if (session()->get('paymongo_session_id') && session()->get('order_id')) {
+            $detail = Order::where('id', session()->get('order_id'))
+                ->update(['payment_id' => session()->get('paymongo_session_id')]);
+
+            if ($detail) {
+                return redirect('/user/dashboard')->with('success', 'Payment successful!');
+            } else {
+                return redirect('/user/dashboard')->with('error', 'Payment failed.');
+            }
+        } else {
+            return redirect('/user/dashboard')->with('error', 'No payment session found.');
+        }
+    }
+
+    public function cancelOrderbyUser(Request $request) {
+        $orderId = $request->input('order_id');
+        $order = Order::where('id', $orderId)
+            ->where('user_id', Auth::user()->id)
+            ->first();
+
+        if (!$order) {
+            return response()->json(['status' => 'error', 'message' => 'Order not found.'], 404);
+        }
+
+        if ($order->status !== 'pending') {
+            return response()->json(['status' => 'error', 'message' => 'Only pending orders can be cancelled.'], 400);
+        }
+
+        $order->status = 'cancelled';
+        $order->save();
+
+        // Restore stock and update cart if necessary
+        foreach ($order->orderItems as $orderItem) {
+            $product = $orderItem->product;
+            $product->stock += $orderItem->quantity;
+            $product->save();
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'Order cancelled successfully.']);
+    }
+
     
 }

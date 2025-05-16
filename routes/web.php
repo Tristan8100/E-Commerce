@@ -8,6 +8,8 @@ use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\OrderController;
 use App\Models\Product;
+use Illuminate\Contracts\View\View;
+use App\Http\Controllers\User\ViewsRender;
 
 Route::get('/', function () {
     return view('welcome');
@@ -17,7 +19,7 @@ Route::get('/dashboard', function () {
     if(Auth::user()->role === "ADMIN"){
         return redirect('/admin/dashboard');
     } elseif (Auth::user()->role === "USER") {
-        return redirect('/user/dashboard');
+        return redirect('/user/home');
     }
 })->middleware(['auth', 'verified'])->name('dashboard');
 
@@ -44,6 +46,8 @@ Route::middleware('auth', 'role:ADMIN')->group(function () {
         return view('admin.addproduct');
     });
 
+    Route::get('/admin/allproduct', [ViewsRender::class, 'adminAllproduct']);
+
     Route::post('/admin/addproduct', [ProductController::class, 'store']);
 });
 
@@ -52,6 +56,8 @@ Route::middleware('auth', 'role:ADMIN')->group(function () {
 Route::get('/admin/getcategories', [CategoryController::class, 'getcategory']);
 
 Route::get('/getallproduct', [ProductController::class, 'getPaginatedInStockProducts']);
+
+Route::get('/getproduct/{id}', [ProductController::class, 'getSingleProduct']);
 
 Route::post('/addtocart', [ProductController::class, 'addtocart']);
 
@@ -67,32 +73,35 @@ Route::post('/checkoutpage', [OrderController::class, 'checkoutpage']);
 
 Route::post('/submitorder', [OrderController::class, 'submitOrder']);
 
-Route::get('/processpayment', function(Request $request){
-    //cs_9Du3vUc79dHApSsDxNTU3t8u
-    if (session()->has('paymongo_session_id')) {
-        $sessionId = session()->get('paymongo_session_id');
-        echo $sessionId;
-    } else {
-        echo "Session not set.";
-    }
-});
+Route::get('/getorder', [OrderController::class, 'getorder']);
+
+Route::get('/processpayment', [OrderController::class, 'processpayment']);
+
+Route::post('/cancelorder', [OrderController::class, 'cancelOrderbyUser']);
 
 //USER
 Route::middleware('auth', 'role:USER')->group(function () {
-    Route::get('/user/dashboard', function () {
+    Route::get('/user/home', [ViewsRender::class, 'AllItems'])->name('user.home');
+
+    Route::get('/user/items', [ViewsRender::class, 'items'])->name('user.items');
+
+    Route::get('/user/cart', [ViewsRender::class, 'cart'])->name('user.cart');
+
+    Route::get('/user/order', [ViewsRender::class, 'order'])->name('user.order');
+
+    Route::get('/user/order/{id}', [ViewsRender::class, 'orderGet'])->name('user.orderget');
+
+
+    Route::get('/try', function () {
         return view('user.userdashboard');
     });
 
-    Route::get('/user/items', function () {
-        return view('user.items');
+    Route::get('/try2', function () {
+        return view('user.allcart');
     });
 
-    Route::get('/user/cart', function () {
-        return view('user.cart');
-    });
-
-    Route::get('/user/checkout', function () {
-        return view('user.check');
+    Route::get('/try3', function () {
+        return view('user.displayallitems');
     });
 
 });
