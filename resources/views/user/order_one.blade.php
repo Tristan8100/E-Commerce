@@ -4,6 +4,7 @@
             <h1 class="font-semibold text-green-600 append"></h1>
         </div>
 
+        
         <div class="container mx-auto mt-4">
             <div class="bg-white shadow-md rounded-lg p-6">
                 <h2 class="text-2xl font-semibold mb-4">Order #{{ $order->id }}</h2>
